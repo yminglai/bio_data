@@ -16,7 +16,7 @@ OUTPUT_DIR="${SCRIPT_DIR}/_trained_model_4k_mixed"
 # Training hyperparameters (based on reference code)
 BATCH_SIZE=128          # Increased from 16
 MAX_LENGTH=128          # Reduced from 512 (most samples are shorter)
-NUM_EPOCHS=200          # Increased to 200 for better convergence
+NUM_EPOCHS=100          # Paper setup: 100 epochs (grokking analysis tracks epochs 5-100)
 LR=1e-4                 # Increased from 5e-5
 WEIGHT_DECAY=0.01       # Added weight decay
 WARMUP_RATIO=0.1        # 10% warmup steps

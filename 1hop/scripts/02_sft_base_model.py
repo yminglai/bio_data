@@ -16,33 +16,28 @@ import os
 import math
 
 class BioQADataset(Dataset):
-    def __init__(self, qa_file, kg_file, tokenizer, max_length=512):
+    def __init__(self, qa_file, bio_file, tokenizer, max_length=512):
         self.tokenizer = tokenizer
         self.max_length = max_length
         self.eos_token = tokenizer.eos_token  # Use model's EOS token
-        
+
         # Load QA pairs
         with open(qa_file, 'r') as f:
             self.qa_pairs = [json.loads(line) for line in f]
-        
-        # Load biographies for memorization training
-        with open(kg_file, 'r') as f:
-            persons = json.load(f)
-            self.person_bios = {
-                p['person_id']: p['biographies'][0]  # Use first bio variant
-                for p in persons
-            }
-    
+
+        # Load biographies for memorization training (one per line;
+        # all 5 paraphrase variants per person, per the paper's setup)
+        with open(bio_file, 'r') as f:
+            self.person_bios = [line.strip() for line in f if line.strip()]
+
     def __len__(self):
-        # Each person contributes: 1 biography + multiple QA pairs
-        # For memorization: we need biography instances + QA instances
+        # Biography instances (memorization) + QA instances (retrieval)
         return len(self.person_bios) + len(self.qa_pairs)
-    
+
     def __getitem__(self, idx):
         # First part: biography memorization (learns to store facts)
         if idx < len(self.person_bios):
-            person_id = list(self.person_bios.keys())[idx]
-            bio = self.person_bios[person_id]
+            bio = self.person_bios[idx]
             
             # Format: biography + EOS token for proper sequence ending
             full_text = f"{bio}{self.eos_token}"
@@ -97,7 +92,8 @@ def main():
     parser.add_argument('--model_name', type=str, default='gpt2', 
                        help='Base model (gpt2, gpt2-medium, etc.)')
     parser.add_argument('--train_qa', type=str, default='data/generated/qa_train.jsonl')
-    parser.add_argument('--train_kg', type=str, default='data/generated/train_kg.json')
+    parser.add_argument('--train_bios', type=str, default='data/generated/biographies_all.txt',
+                       help='Biography file, one biography per line (all variants)')
     parser.add_argument('--output_dir', type=str, default='models/base_sft')
     parser.add_argument('--epochs', type=int, default=None, help='Number of epochs (will be calculated from max_steps)')
     parser.add_argument('--max_steps', type=int, default=80000, help='Total training steps')
@@ -124,7 +120,7 @@ def main():
     print(f"Loading training data from {args.train_qa}")
     train_dataset = BioQADataset(
         args.train_qa,
-        args.train_kg,
+        args.train_bios,
         tokenizer,
         args.max_length
     )

@@ -61,7 +61,7 @@ Requires Python 3.10+ and PyTorch 2.0+ (GPU recommended for training).
 
 ## 🚀 Quick Start
 
-No pretrained checkpoints are distributed — every artifact (datasets, SFT model, SAEs, results) is regenerated from scratch by the scripts below.
+No pretrained checkpoints are distributed — every artifact (datasets, SFT model, SAEs, results) is regenerated from scratch by the scripts below. This release is a cleaned-up version of the original experiment code that follows the protocol described in the paper's appendices, so reproduced numbers may differ marginally from the published tables.
 
 ### 1-Hop (Bio QA)
 

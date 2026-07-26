@@ -153,10 +153,9 @@ def main():
         all_persons.append(person)
 
     # Save knowledge graphs (person records incl. biographies).
-    # 02 (SFT) reads train_kg.json for biography memorization;
-    # 05/06 read test_kg.json to look up swap-target attributes.
-    # Train and test share the same persons - the train/test split
-    # is over QA templates (0-1 train, 2-3 held-out), not persons.
+    # 05/06 read these to look up swap-target attributes; the SFT step (02)
+    # memorizes biographies_all.txt. Train and test share the same persons -
+    # the train/test split is over QA templates (0-1 train, 2-3 held-out).
     with open(output_dir / "train_kg.json", "w") as f:
         json.dump(all_persons, f, indent=2)
     with open(output_dir / "test_kg.json", "w") as f:

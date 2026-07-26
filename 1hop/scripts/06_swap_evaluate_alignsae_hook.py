@@ -32,7 +32,7 @@ def normalize_date(date_str):
     if match:
         day, month, year = match.groups()
         return (int(day), month.lower(), int(year))
-    match = re.match(r"(\d{4})[-/](\d{1,2})[-/](\d{4})", date_str)
+    match = re.match(r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})", date_str)
     if match:
         year, month_num, day = match.groups()
         months = ['', 'january', 'february', 'march', 'april', 'may', 'june',
@@ -269,7 +269,11 @@ def swap_controllability_alignsae(sae, n_relation, lm_model, tokenizer, qa_file,
                             return (hidden,) + output[1:] if len(output) > 1 else (hidden,)
                         return hook_fn
                     
-                    layer_module = lm_model.transformer.h[layer_idx]
+                    # hidden_states[layer_idx] (where h was read) is the OUTPUT
+                    # of block layer_idx-1, so steer at that same block.
+                    if layer_idx < 1:
+                        raise ValueError("layer_idx must be >= 1 (hidden_states[0] is the embedding output)")
+                    layer_module = lm_model.transformer.h[layer_idx - 1]
                     hook = layer_module.register_forward_hook(make_hook(steering, last_pos))
                     
                     try:

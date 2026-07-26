@@ -107,9 +107,15 @@ def intervention_forward_pass(
     - Suppress original R2 slot to 0
     - Activate swap relation slot to alpha
     """
-    prompt = f"Question: {question}\\nAnswer: {entity_2}"
-    inputs = tokenizer(prompt, return_tensors='pt').to(device)
-    
+    # Match the training format exactly: a real newline before "Answer:" and
+    # the E2 token concatenated directly after it (no space; entities are
+    # dedicated single tokens).
+    prompt_ids = tokenizer(f"Question: {question}\nAnswer:",
+                           return_tensors='pt')['input_ids'].to(device)
+    e2_ids = tokenizer.encode(entity_2, add_special_tokens=False)
+    input_ids = torch.cat([prompt_ids, torch.tensor([e2_ids], device=device)], dim=1)
+    inputs = {'input_ids': input_ids, 'attention_mask': torch.ones_like(input_ids)}
+
     intervention_applied = False
     
     def intervention_hook(module, input, output):
@@ -119,8 +125,8 @@ def intervention_forward_pass(
             h_last = hidden[0, -1, :].clone()
             
             with torch.no_grad():
-                # Get all slot activations
-                z = sae.encoder(h_last)  # [n_slots]
+                # Get all slot activations (same encoding as sae.forward)
+                z = torch.relu(sae.encoder(h_last))  # [n_slots]
                 z_intervened = z.clone()
                 
                 # Intervene on supervised relation slots (last 20)
@@ -137,7 +143,12 @@ def intervention_forward_pass(
                 return (hidden_modified,) + output[1:]
         return output
     
-    hook_handle = lm_model.transformer.h[layer_idx].register_forward_hook(intervention_hook)
+    # 01_collect reads outputs.hidden_states[layer_idx], which is the OUTPUT
+    # of block layer_idx-1 (hidden_states[0] is the embedding output). Hook
+    # the same block so the SAE sees the representation it was trained on.
+    if layer_idx < 1:
+        raise ValueError("layer_idx must be >= 1 (hidden_states[0] is the embedding output)")
+    hook_handle = lm_model.transformer.h[layer_idx - 1].register_forward_hook(intervention_hook)
     
     with torch.no_grad():
         generated = lm_model.generate(
@@ -253,11 +264,11 @@ def main():
     
     device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
     
-    print(f"\\n{'='*60}")
+    print(f"\n{'='*60}")
     print(f"Evaluating Alpha = {args.alpha}")
     print(f"Layer: {args.layer}")
     print(f"Max new tokens: {args.max_new_tokens}")
-    print(f"{'='*60}\\n")
+    print(f"{'='*60}\n")
     
     tokenizer, lm_model, sae = load_models(args.lm_model, args.sae_checkpoint, device)
     entity_relations = load_facts_database(args.facts_db)
@@ -276,8 +287,8 @@ def main():
     with open(output_file, 'w') as f:
         json.dump(result, f, indent=2)
     
-    print(f"\\n✓ Alpha={args.alpha}: {result['success']}/{result['total']} ({result['success_rate']*100:.1f}%)")
-    print(f"✓ Saved to {output_file}\\n")
+    print(f"\n✓ Alpha={args.alpha}: {result['success']}/{result['total']} ({result['success_rate']*100:.1f}%)")
+    print(f"✓ Saved to {output_file}\n")
 
 
 if __name__ == '__main__':

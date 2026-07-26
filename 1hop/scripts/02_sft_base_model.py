@@ -58,7 +58,8 @@ class BioQADataset(Dataset):
             input_ids = encoding['input_ids'].squeeze()
             attention_mask = encoding['attention_mask'].squeeze()
             labels = input_ids.clone()  # Train on entire biography
-            
+            labels[attention_mask == 0] = -100  # No loss on padding
+
         # Second part: pure QA (learns to retrieve stored facts)
         else:
             qa_idx = idx - len(self.person_bios)
@@ -79,10 +80,11 @@ class BioQADataset(Dataset):
             input_ids = encoding['input_ids'].squeeze()
             attention_mask = encoding['attention_mask'].squeeze()
             
-            # Labels: mask the prompt part, only train on answer
+            # Labels: mask the prompt and padding, only train on answer
             labels = input_ids.clone()
             prompt_tokens = self.tokenizer(prompt, add_special_tokens=False)['input_ids']
             labels[:len(prompt_tokens)] = -100  # Ignore loss on prompt
+            labels[attention_mask == 0] = -100  # No loss on padding
         
         return {
             'input_ids': input_ids,
@@ -287,8 +289,6 @@ def main():
     model_to_save = model.module if hasattr(model, 'module') else model
     model_to_save.save_pretrained(final_dir)
     tokenizer.save_pretrained(final_dir)
-    
-    print("Training complete!")
     
     print("Training complete!")
 

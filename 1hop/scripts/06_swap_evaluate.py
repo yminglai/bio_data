@@ -65,6 +65,44 @@ def compare_answers(gold_answer, gen_answer, rule_name):
     return (gold_answer in gen_answer) or (gen_answer in gold_answer) or (gold_answer == gen_answer)
 
 
+def _patch_hook(h_new, position):
+    """Forward hook that replaces one position of a block's output hidden state."""
+    def hook_fn(module, module_in, module_out):
+        hidden = module_out[0]
+        # Apply only on the prefill pass; later generation steps have seq_len 1
+        if hidden.shape[1] > position:
+            hidden = hidden.clone()
+            hidden[0, position, :] = h_new
+            return (hidden,) + module_out[1:]
+        return module_out
+    return hook_fn
+
+
+def generate_with_patched_hidden(lm_model, tokenizer, inputs, h_new, position, layer_idx, max_new_tokens=50):
+    """
+    Patch the residual stream at layer_idx / position, then continue the
+    forward pass through the remaining layers and generate autoregressively
+    (paper Appendix D.3). hidden_states[k] is the output of transformer block
+    k-1 (index 0 is the embedding output), so this hooks block layer_idx-1.
+    """
+    if layer_idx < 1:
+        raise ValueError("layer_idx must be >= 1 (hidden_states[0] is the embedding output)")
+    hook = lm_model.transformer.h[layer_idx - 1].register_forward_hook(_patch_hook(h_new, position))
+    try:
+        generated = lm_model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            do_sample=False,
+            pad_token_id=tokenizer.eos_token_id,
+            eos_token_id=tokenizer.eos_token_id
+        )
+    finally:
+        hook.remove()
+    return tokenizer.decode(
+        generated[0][inputs['input_ids'].shape[1]:], skip_special_tokens=True
+    ).strip()
+
+
 def load_sae(checkpoint_path, device):
     # Lazy import of SAE training module structures
     import importlib.util
@@ -180,22 +218,14 @@ def swap_controllability_only(sae, lm_model, tokenizer, qa_file, kg_file, layer_
 
                     h_swapped = sae.decoder(z_swapped.unsqueeze(0))
 
-                    intervened_inputs = inputs.copy()
-                    intervened_inputs['inputs_embeds'] = lm_model.get_input_embeddings()(inputs['input_ids'])
-                    intervened_inputs['inputs_embeds'][0, last_pos, :] = h_swapped[0]
-                    intervened_inputs.pop('input_ids', None)
-                    # Keep attention_mask for inputs_embeds
-                    if 'attention_mask' not in intervened_inputs:
-                        intervened_inputs['attention_mask'] = torch.ones_like(inputs['input_ids'])
-
-                    # Get next token with intervention (single token, not full generation)
-                    with torch.no_grad():
-                        intervened_outputs = lm_model(**intervened_inputs)
-                        next_token_logits = intervened_outputs.logits[0, last_pos, :]
-                        
-                        # Get the most likely next token
-                        next_token_id = torch.argmax(next_token_logits).item()
-                        gen_text = tokenizer.decode(next_token_id, skip_special_tokens=True).strip()
+                    # Patch the residual stream at layer_idx and generate
+                    # autoregressively (paper Appendix D.3)
+                    gen_text = generate_with_patched_hidden(
+                        lm_model, tokenizer, inputs, h_swapped[0], last_pos,
+                        layer_idx, max_new_tokens=max_new_tokens)
+                    if '<end_of_text>' in gen_text:
+                        gen_text = gen_text.split('<end_of_text>')[0]
+                    gen_text = gen_text.strip().split('\n')[0]
 
                     is_correct = compare_answers(str(target_answer), gen_text, target_rule_name)
 

@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from collections import defaultdict
 import re
+import random
 import pandas as pd
 
 def normalize_date(date_str):
@@ -89,18 +90,65 @@ def compare_answers(gold_answer, gen_answer, rule_name):
         gold_answer == gen_answer
     )
 
-# Import SAE model
-import sys
-sys.path.append(str(Path(__file__).parent))
-try:
-    from scripts.train_sae_6slot import SupervisedSAE
-except ImportError:
-    # Try alternative import path
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("train_sae", Path(__file__).parent / "04_train_sae.py")
-    train_sae_module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(train_sae_module)
-    LargeSupervisedSAE = train_sae_module.LargeSupervisedSAE
+# Import SAE model from 04_train_sae.py (numeric filename, so use importlib)
+import importlib.util
+spec = importlib.util.spec_from_file_location("train_sae", Path(__file__).parent / "04_train_sae.py")
+train_sae_module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(train_sae_module)
+LargeSupervisedSAE = train_sae_module.LargeSupervisedSAE
+
+
+def _patch_hook(h_new, position):
+    """Forward hook that replaces one position of a block's output hidden state."""
+    def hook_fn(module, module_in, module_out):
+        hidden = module_out[0]
+        # Apply only on the prefill pass; later generation steps have seq_len 1
+        if hidden.shape[1] > position:
+            hidden = hidden.clone()
+            hidden[0, position, :] = h_new
+            return (hidden,) + module_out[1:]
+        return module_out
+    return hook_fn
+
+
+def forward_with_patched_hidden(lm_model, inputs, h_new, position, layer_idx):
+    """
+    One forward pass with hidden_states[layer_idx][0, position] replaced by
+    h_new. hidden_states[k] is the output of transformer block k-1 (index 0
+    is the embedding output), so this hooks block layer_idx-1 and requires
+    layer_idx >= 1.
+    """
+    if layer_idx < 1:
+        raise ValueError("layer_idx must be >= 1 (hidden_states[0] is the embedding output)")
+    hook = lm_model.transformer.h[layer_idx - 1].register_forward_hook(_patch_hook(h_new, position))
+    try:
+        return lm_model(**inputs)
+    finally:
+        hook.remove()
+
+
+def generate_with_patched_hidden(lm_model, tokenizer, inputs, h_new, position, layer_idx, max_new_tokens=30):
+    """
+    Patch the residual stream at layer_idx / position, then continue the
+    forward pass through the remaining layers and generate autoregressively
+    (paper Appendix D.3). Returns the decoded continuation.
+    """
+    if layer_idx < 1:
+        raise ValueError("layer_idx must be >= 1 (hidden_states[0] is the embedding output)")
+    hook = lm_model.transformer.h[layer_idx - 1].register_forward_hook(_patch_hook(h_new, position))
+    try:
+        generated = lm_model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            do_sample=False,
+            pad_token_id=tokenizer.eos_token_id,
+            eos_token_id=tokenizer.eos_token_id
+        )
+    finally:
+        hook.remove()
+    return tokenizer.decode(
+        generated[0][inputs['input_ids'].shape[1]:], skip_special_tokens=True
+    ).strip()
 
 def load_sae(checkpoint_path, device):
     """Load trained SAE model."""
@@ -191,10 +239,11 @@ def evaluate_binding_accuracy(sae, lm_model, tokenizer, qa_file, kg_file, layer_
             margin = (sorted_logits[0] - sorted_logits[1]).item() if len(sorted_logits) > 1 else 0.0
             
             # Check slot binding: Does question activate correct slot?
+            # (per-sample flags; do NOT reuse the accumulator names above)
             true_rule = qa['rule_idx']
             slot_is_correct = (predicted_slot == true_rule)
-            slot_top3_correct = true_rule in top3_slots
-            slot_top5_correct = true_rule in top5_slots
+            is_top3_correct = true_rule in top3_slots
+            is_top5_correct = true_rule in top5_slots
             
             # Generate answer
             generated = lm_model.generate(
@@ -223,9 +272,9 @@ def evaluate_binding_accuracy(sae, lm_model, tokenizer, qa_file, kg_file, layer_
             total += 1
             if slot_is_correct:
                 slot_correct += 1
-            if slot_top3_correct:
+            if is_top3_correct:
                 slot_top3_correct += 1
-            if slot_top5_correct:
+            if is_top5_correct:
                 slot_top5_correct += 1
             if answer_is_correct:
                 answer_correct += 1
@@ -236,9 +285,9 @@ def evaluate_binding_accuracy(sae, lm_model, tokenizer, qa_file, kg_file, layer_
             per_rule[kg_rule_name]['total'] += 1
             if slot_is_correct:
                 per_rule[kg_rule_name]['slot_correct'] += 1
-            if slot_top3_correct:
+            if is_top3_correct:
                 per_rule[kg_rule_name]['slot_top3_correct'] += 1
-            if slot_top5_correct:
+            if is_top5_correct:
                 per_rule[kg_rule_name]['slot_top5_correct'] += 1
             if answer_is_correct:
                 per_rule[kg_rule_name]['answer_correct'] += 1
@@ -337,17 +386,20 @@ def test_slot_assignment(sae, lm_model, tokenizer, qa_file, kg_file, layer_idx=-
     
     return confusion, confusion_norm
 
-def causal_edits_evaluation(sae, lm_model, tokenizer, qa_file, layer_idx=-1):
+def causal_edits_evaluation(sae, lm_model, tokenizer, qa_file, layer_idx=6, num_samples=200):
     """
     Evaluate causal edits: Knock-Out (KO) and Knock-In (KI) on relation slots.
     Measures logit deltas and odds multipliers when intervening on slots.
     """
     device = next(lm_model.parameters()).device
     n_relation = 6
-    
-    # Load a few QA pairs for testing
+
+    # Load QA pairs and subsample for tractability
     with open(qa_file, 'r') as f:
         qa_pairs = [json.loads(line) for line in f]
+    if num_samples is not None and num_samples < len(qa_pairs):
+        random.seed(1234)
+        qa_pairs = random.sample(qa_pairs, num_samples)
     results = []
     
     lm_model.eval()
@@ -378,33 +430,23 @@ def causal_edits_evaluation(sae, lm_model, tokenizer, qa_file, layer_idx=-1):
                 
                 # Reconstruct activation with KO
                 h_ko = sae.decoder(z_ko.unsqueeze(0))
-                
-                # Get intervened logits
-                inputs_ko = inputs.copy()
-                inputs_ko['inputs_embeds'] = lm_model.get_input_embeddings()(inputs['input_ids'])
-                inputs_ko['inputs_embeds'][0, last_position, :] = h_ko[0]
-                # Remove input_ids when using inputs_embeds
-                inputs_ko.pop('input_ids', None)
-                
-                outputs_ko = lm_model(**inputs_ko)
+
+                # Patch the residual stream at layer_idx and rerun the forward pass
+                outputs_ko = forward_with_patched_hidden(
+                    lm_model, inputs, h_ko[0], last_position, layer_idx)
                 ko_logits = outputs_ko.logits[0, -1, :]
-                
+
                 # Logit delta for KO
                 delta_ko = ko_logits - baseline_logits
-                
+
                 # Knock-In: Set slot to high value (e.g., 10)
                 z_ki = z.clone()
                 z_ki[-(n_relation - slot_idx)] = 10.0
-                
+
                 h_ki = sae.decoder(z_ki.unsqueeze(0))
-                
-                inputs_ki = inputs.copy()
-                inputs_ki['inputs_embeds'] = lm_model.get_input_embeddings()(inputs['input_ids'])
-                inputs_ki['inputs_embeds'][0, last_position, :] = h_ki[0]
-                # Remove input_ids when using inputs_embeds
-                inputs_ki.pop('input_ids', None)
-                
-                outputs_ki = lm_model(**inputs_ki)
+
+                outputs_ki = forward_with_patched_hidden(
+                    lm_model, inputs, h_ki[0], last_position, layer_idx)
                 ki_logits = outputs_ki.logits[0, -1, :]
                 
                 delta_ki = ki_logits - baseline_logits
@@ -448,13 +490,16 @@ def causal_edits_evaluation(sae, lm_model, tokenizer, qa_file, layer_idx=-1):
         'detailed_results': results
     }
 
-def swap_controllability_evaluation(sae, lm_model, tokenizer, qa_file, kg_file, layer_idx=-1, alphas=[1.0, 10.0, 100.0, 1000.0]):
+def swap_controllability_evaluation(sae, lm_model, tokenizer, qa_file, kg_file, layer_idx=6,
+                                    alphas=[1.0, 10.0, 100.0, 1000.0], num_samples=100):
     """
     Evaluate swap controllability: Test if we can control answer generation by swapping activated slots.
     For each question about attribute A, activate slot for attribute B and check if we get answer for B.
     Tests different alpha values for target slot activation strength.
-    
-    Uses forward hooks to intervene on activations instead of inputs_embeds.
+
+    Protocol (paper Appendix D.3): suppress the original slot, set the target
+    slot to alpha, decode, patch the residual stream at layer_idx, and let the
+    model generate autoregressively.
     """
     device = next(lm_model.parameters()).device
     n_relation = 6
@@ -475,9 +520,12 @@ def swap_controllability_evaluation(sae, lm_model, tokenizer, qa_file, kg_file, 
             'work_city': person['work_city']
         }
     
-    # Load QA data
+    # Load QA data and subsample for tractability
     with open(qa_file, 'r') as f:
-        qa_pairs = [json.loads(line) for line in f][:5]  # Test on 5 samples for debugging
+        qa_pairs = [json.loads(line) for line in f]
+    if num_samples is not None and num_samples < len(qa_pairs):
+        random.seed(1234)
+        qa_pairs = random.sample(qa_pairs, num_samples)
     
     rule_names = ['birth_date', 'birth_city', 'university', 'major', 'employer', 'work_city']
     # Map QA rule names to KG attribute names
@@ -548,9 +596,7 @@ def swap_controllability_evaluation(sae, lm_model, tokenizer, qa_file, kg_file, 
                         baseline_text = baseline_text.split('.')[0].strip()
                     if '\n' in baseline_text:
                         baseline_text = baseline_text.split('\n')[0].strip()
-                    
-                    print(f"Baseline generation for {qa['question']}: '{baseline_text}' (expected: '{qa['answer']}')")
-                    
+
                     # Get activations for intervention
                     outputs = lm_model(**inputs, output_hidden_states=True)
                     hidden_states = outputs.hidden_states[layer_idx]
@@ -570,42 +616,31 @@ def swap_controllability_evaluation(sae, lm_model, tokenizer, qa_file, kg_file, 
                     
                     # Reconstruct activation with swapped slots
                     h_swapped = sae.decoder(z_swapped.unsqueeze(0))
-                    
-                    # INTERVENTION: Use intervened activations to get next token
-                    intervention_activations = h_swapped[0]  # [d_model]
-                    
-                    # Create intervened inputs (similar to causal_edits_evaluation)
-                    intervened_inputs = inputs.copy()
-                    intervened_inputs['inputs_embeds'] = lm_model.get_input_embeddings()(inputs['input_ids'])
-                    intervened_inputs['inputs_embeds'][0, last_position, :] = intervention_activations
-                    intervened_inputs.pop('input_ids', None)
-                    
-                    # Get logits with intervention
-                    with torch.no_grad():
-                        intervened_outputs = lm_model(**intervened_inputs)
-                        next_token_logits = intervened_outputs.logits[0, last_position, :]
-                        
-                        # Get the most likely next token
-                        next_token_id = torch.argmax(next_token_logits).item()
-                        generated_text = tokenizer.decode(next_token_id, skip_special_tokens=True).strip()
-                        
-                        # Debug: print intervention results
-                        print(f"Intervention generation for {true_rule_name} → {target_rule_name} (alpha={alpha}): '{generated_text}' (expected: '{target_answer}')")
-                        
-                        # Check if generated answer matches target answer
-                        is_correct = compare_answers(target_answer, generated_text, target_rule_name)
-                        
-                        results.append({
-                            'alpha': alpha,
-                            'person_id': person_id,
-                            'question': qa['question'],
-                            'original_relation': true_rule_name,
-                            'swap_relation': target_rule_name,
-                            'original_answer': original_answer,
-                            'target_answer': target_answer,
-                            'generated_answer': generated_text,
-                            'is_correct': is_correct
-                        })
+
+                    # INTERVENTION: patch the residual stream at layer_idx and
+                    # generate autoregressively (paper Appendix D.3)
+                    generated_text = generate_with_patched_hidden(
+                        lm_model, tokenizer, inputs, h_swapped[0], last_position, layer_idx)
+                    if '.' in generated_text:
+                        generated_text = generated_text.split('.')[0].strip()
+                    if '\n' in generated_text:
+                        generated_text = generated_text.split('\n')[0].strip()
+
+                    # Check if generated answer matches target answer
+                    is_correct = compare_answers(target_answer, generated_text, target_rule_name)
+
+                    results.append({
+                        'alpha': alpha,
+                        'person_id': person_id,
+                        'question': qa['question'],
+                        'original_relation': true_rule_name,
+                        'swap_relation': target_rule_name,
+                        'original_answer': original_answer,
+                        'target_answer': target_answer,
+                        'baseline_answer': baseline_text,
+                        'generated_answer': generated_text,
+                        'is_correct': is_correct
+                    })
         
         # Calculate success rates for this alpha
         df = pd.DataFrame(results)
@@ -686,6 +721,10 @@ def main():
     parser.add_argument('--test_kg', type=str, default='data/generated/test_kg.json')
     parser.add_argument('--output_dir', type=str, default='results/sae_eval')
     parser.add_argument('--layer', type=int, default=6, help='hidden_states index (must match 03/04)')
+    parser.add_argument('--causal_num_samples', type=int, default=200,
+                       help='QA samples for the causal-edits (KO/KI) evaluation')
+    parser.add_argument('--swap_num_samples', type=int, default=100,
+                       help='QA samples for the swap-controllability evaluation')
     args = parser.parse_args()
     
     output_dir = Path(args.output_dir)
@@ -761,7 +800,7 @@ def main():
     # CONFUSION MATRIX (Slot Assignment)
     # ===================================================================
     
-    print("\n=== Slot Assignment Confusion Matrix (Test-ID) ===")
+    print("\n=== Slot Assignment Confusion Matrix (held-out templates) ===")
     confusion, confusion_norm = test_slot_assignment(
         sae, lm_model, tokenizer, args.test_qa_id, args.test_kg, args.layer
     )
@@ -778,7 +817,8 @@ def main():
     
     print("\n=== Causal Edits Evaluation (KO/KI) ===")
     causal_results = causal_edits_evaluation(
-        sae, lm_model, tokenizer, args.train_qa, args.layer
+        sae, lm_model, tokenizer, args.train_qa, args.layer,
+        num_samples=args.causal_num_samples
     )
     
     print("\nPer-slot causal effects:")
@@ -793,7 +833,8 @@ def main():
     
     print("\n=== Swap Controllability Evaluation ===")
     swap_results = swap_controllability_evaluation(
-        sae, lm_model, tokenizer, args.train_qa, args.train_kg, args.layer
+        sae, lm_model, tokenizer, args.train_qa, args.train_kg, args.layer,
+        num_samples=args.swap_num_samples
     )
     
     print(f"Best alpha: {swap_results['best_alpha']} (success rate: {swap_results['best_success_rate']:.3f})")
@@ -833,7 +874,7 @@ def main():
         cbar_kws={'label': 'Fraction'},
         vmin=0, vmax=1
     )
-    axes[0, 0].set_title('Slot Assignment Confusion (Test-ID)\n(Should be diagonal for 1-to-1)')
+    axes[0, 0].set_title('Slot Assignment Confusion (held-out templates)\n(Should be diagonal for 1-to-1)')
     axes[0, 0].set_xlabel('True Rule')
     axes[0, 0].set_ylabel('Predicted Slot')
     

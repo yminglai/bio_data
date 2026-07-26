@@ -84,8 +84,11 @@ def collect_activations(model, tokenizer, qa_file, layer_idx=-1, max_samples=Non
             last_position = inputs['input_ids'].shape[1] - 1
             h1 = hidden_states[0, last_position, :].cpu().numpy()  # [d_model]
             
-            # Tokenize E2 to get target token
-            e2_tokens = tokenizer.encode(f" {entity_2}", add_special_tokens=False)
+            # Tokenize E2 to get the target token. Entities are dedicated
+            # single tokens with no leading space (training concatenates them
+            # directly after "Answer:"), so encode WITHOUT a space — with one,
+            # the first token would be the space token for every sample.
+            e2_tokens = tokenizer.encode(entity_2, add_special_tokens=False)
             e2_first_token = e2_tokens[0] if len(e2_tokens) > 0 else 0
             
             activations.append({
@@ -102,17 +105,22 @@ def collect_activations(model, tokenizer, qa_file, layer_idx=-1, max_samples=Non
             })
             
             # === Activation 2: When predicting E3 (should activate R2) ===
-            # We need to run the model with E2 as part of the answer
-            prompt_with_e2 = f"Question: {question}\nAnswer: {entity_2}"
-            inputs_with_e2 = tokenizer(prompt_with_e2, return_tensors='pt').to(device)
-            
-            outputs_with_e2 = model(**inputs_with_e2, output_hidden_states=True)
+            # Training concatenated the E2 token directly after "Answer:"
+            # (no space), so build the context the same way instead of
+            # tokenizing "Answer: {entity_2}", which inserts a space token.
+            input_ids_e2 = torch.cat(
+                [inputs['input_ids'], torch.tensor([e2_tokens], device=device)], dim=1)
+            attention_mask_e2 = torch.ones_like(input_ids_e2)
+
+            outputs_with_e2 = model(input_ids=input_ids_e2,
+                                    attention_mask=attention_mask_e2,
+                                    output_hidden_states=True)
             hidden_states_with_e2 = outputs_with_e2.hidden_states[layer_idx]
-            last_position_e2 = inputs_with_e2['input_ids'].shape[1] - 1
+            last_position_e2 = input_ids_e2.shape[1] - 1
             h2 = hidden_states_with_e2[0, last_position_e2, :].cpu().numpy()  # [d_model]
-            
-            # Tokenize E3 to get target token
-            e3_tokens = tokenizer.encode(f" {entity_3}", add_special_tokens=False)
+
+            # Tokenize E3 to get the target token (no leading space, as above)
+            e3_tokens = tokenizer.encode(entity_3, add_special_tokens=False)
             e3_first_token = e3_tokens[0] if len(e3_tokens) > 0 else 0
             
             activations.append({

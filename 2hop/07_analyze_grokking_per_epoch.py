@@ -150,7 +150,7 @@ def plot_grokking_curves(results, output_dir):
     axes[0].plot(epochs, top5_accs, marker='^', linewidth=2, label='Top-5', color='#F18F01', markersize=6)
     axes[0].set_xlabel('Training Epoch', fontsize=12, fontweight='bold')
     axes[0].set_ylabel('Binding Accuracy', fontsize=12, fontweight='bold')
-    axes[0].set_title('Grokking: Emergence of Relation Binding\\n(100k+20 Large SAE)', fontsize=14, fontweight='bold')
+    axes[0].set_title('Grokking: Emergence of Relation Binding\n(100k+20 Large SAE)', fontsize=14, fontweight='bold')
     axes[0].legend(fontsize=11, framealpha=0.9)
     axes[0].grid(True, alpha=0.3, linestyle='--')
     axes[0].set_ylim([0, 1.0])
@@ -260,7 +260,7 @@ def main():
             print(f"⚠ Activation file not found: {act_path}")
             continue
         
-        print(f"\\nAnalyzing epoch {epoch_num}...")
+        print(f"\nAnalyzing epoch {epoch_num}...")
         sae = load_sae(sae_path, device)
         result = analyze_sae_binding(sae, act_path, device)
         result['epoch'] = epoch_num
@@ -279,7 +279,7 @@ def main():
     
     with open(output_dir / 'grokking_results.json', 'w') as f:
         json.dump(results, f, indent=2)
-    print(f"\\n✓ Results saved to {output_dir / 'grokking_results.json'}")
+    print(f"\n✓ Results saved to {output_dir / 'grokking_results.json'}")
     
     # Optional plots (default off)
     if args.plots:

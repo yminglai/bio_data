@@ -177,8 +177,10 @@ def main():
                     
                     return (hidden,) + output[1:]
                 
-                # For GPT2, use transformer.h
-                hook = lm_model.transformer.h[args.layer_idx].register_forward_hook(intervention_hook)
+                # For GPT2, hook the output of block layer_idx-1, which is
+                # hidden_states[layer_idx] — the representation the SAE
+                # features were extracted from (01_find_unsupervised_features).
+                hook = lm_model.transformer.h[args.layer_idx - 1].register_forward_hook(intervention_hook)
                 
                 try:
                     swapped_out = lm_model.generate(**inputs, max_new_tokens=args.max_new_tokens,

@@ -153,9 +153,15 @@ def evaluate_binding_accuracy(sae, lm_model, tokenizer, qa_file, layer_idx=-1):
             relation_counts_t1[relation_1_idx] += 1
             
             # === Evaluate position 2: predicting E3 (should activate R2) ===
-            prompt_with_e2 = f"Question: {question}\nAnswer: {entity_2}"
-            inputs_with_e2 = tokenizer(prompt_with_e2, return_tensors='pt').to(device)
-            
+            # Training concatenated the E2 token directly after "Answer:"
+            # (no space; entities are dedicated single tokens), so build the
+            # context the same way.
+            e2_ids = tokenizer.encode(entity_2, add_special_tokens=False)
+            input_ids_e2 = torch.cat(
+                [inputs['input_ids'], torch.tensor([e2_ids], device=device)], dim=1)
+            inputs_with_e2 = {'input_ids': input_ids_e2,
+                              'attention_mask': torch.ones_like(input_ids_e2)}
+
             outputs_with_e2 = lm_model(**inputs_with_e2, output_hidden_states=True)
             hidden_states_with_e2 = outputs_with_e2.hidden_states[layer_idx]
             last_position_e2 = inputs_with_e2['input_ids'].shape[1] - 1
@@ -189,11 +195,7 @@ def evaluate_binding_accuracy(sae, lm_model, tokenizer, qa_file, layer_idx=-1):
             confusion_matrix_t2[relation_2_idx, top1_t2] += 1
             binding_matrix_t2[relation_2_idx, :] += slot_logits_t2.cpu().numpy()
             relation_counts_t2[relation_2_idx] += 1
-    
-            confusion_matrix_t2[relation_2_idx, top1_t2] += 1
-            binding_matrix_t2[relation_2_idx, :] += slot_logits_t2.cpu().numpy()
-            relation_counts_t2[relation_2_idx] += 1
-    
+
     # Normalize binding matrices
     for i in range(len(RELATIONS)):
         if relation_counts_t1[i] > 0:

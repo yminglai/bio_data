@@ -77,7 +77,7 @@ class LargeSupervisedSAE(nn.Module):
         ])
     
     def forward(self, h, temperature=1.0, hard=False):
-        z = self.encoder(h)
+        z = torch.relu(self.encoder(h))  # z = ReLU(W_e h + b_e)
         h_recon = self.decoder(z)
         return z, h_recon
 

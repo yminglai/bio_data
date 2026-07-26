@@ -36,7 +36,7 @@ class LargeSupervisedSAE(nn.Module):
             self.decoder.weight.data = self.encoder.weight.data.T.clone()
     
     def forward(self, h):
-        z = self.encoder(h)
+        z = torch.relu(self.encoder(h))  # z = ReLU(W_e h + b_e)
         h_recon = self.decoder(z)
         return z, h_recon
     

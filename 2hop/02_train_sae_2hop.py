@@ -74,7 +74,7 @@ class LargeSupervisedSAE(nn.Module):
             z: [batch, n_slots] - slot activations (all slots)
             h_recon: [batch, d_model] - reconstructed activations
         """
-        z = self.encoder(h)  # [batch, n_slots]
+        z = torch.relu(self.encoder(h))  # z = ReLU(W_e h + b_e)  # [batch, n_slots]
         h_recon = self.decoder(z)
         return z, h_recon
     

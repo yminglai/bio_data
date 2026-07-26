@@ -1,6 +1,6 @@
 """
 Step 4: Train Supervised 1-to-1 SAE
-Large SAE with 100,000 free slots + 6 relation slots.
+Large SAE with K free slots + 6 relation slots (paper: K=10,000 for 1-hop).
 Supports staged training: reconstruction first, then alignment.
 Supports separate and joint training modes.
 """
@@ -33,10 +33,10 @@ class ActivationDataset(Dataset):
 
 class LargeSupervisedSAE(nn.Module):
     """
-    Large SAE: 100,000 free slots + 6 relation slots = 100,006 total.
-    The last 6 slots are supervised to match the one-hot relation label.
+    Large SAE: n_free free slots + 6 relation slots.
+    The last 6 slots are supervised to bind one relation each.
     """
-    def __init__(self, d_model, n_free=100000, n_relation=6, vocab_size=50257):
+    def __init__(self, d_model, n_free=10000, n_relation=6, vocab_size=50257):
         super().__init__()
         self.n_free = n_free
         self.n_relation = n_relation
@@ -73,7 +73,7 @@ class LargeSupervisedSAE(nn.Module):
             z: [batch, n_slots] - slot activations (pre-activations)
             h_recon: [batch, d_model] - reconstructed activations
         """
-        z = self.encoder(h)  # [batch, n_slots]
+        z = F.relu(self.encoder(h))  # [batch, n_slots], z = ReLU(W_e h + b_e)
         h_recon = self.decoder(z)
         return z, h_recon
     
@@ -127,11 +127,10 @@ def compute_loss(model, h, rule_idx, answer_tokens, stage=1, mode='joint',
         # 2. Sparsity loss (L1 on free slots)
         L_sparse = z[:, :n_free].abs().mean()
 
-        # 3. Alignment loss (supervise last 6 slots to match one-hot rule)
-        target = torch.zeros((batch_size, n_relation), device=device)
-        target[torch.arange(batch_size), rule_idx] = 1.0
+        # 3. Alignment loss: cross-entropy over the 6 relation slots so the
+        # gold relation's slot dominates (paper Eq. 9-10)
         rel_slots = z[:, -n_relation:]
-        L_align = F.mse_loss(rel_slots, target)
+        L_align = F.cross_entropy(rel_slots, rule_idx)
 
         # 4. Independence loss (decorrelate free slots within themselves)
         z_free = z[:, :n_free]
@@ -222,16 +221,18 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--activation_file', type=str, default='data/activations/train_activations.pkl')
     parser.add_argument('--output_dir', type=str, default='models/sae_large')
-    parser.add_argument('--epochs_stage1', type=int, default=50, help='Epochs for stage 1 (reconstruction only)')
-    parser.add_argument('--epochs_stage2', type=int, default=100, help='Epochs for stage 2 (full training)')
+    parser.add_argument('--epochs_stage1', type=int, default=100, help='Epochs for stage 1 (reconstruction only)')
+    parser.add_argument('--epochs_stage2', type=int, default=500, help='Epochs for stage 2 (full training)')
     parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--n_free', type=int, default=100000, help='Number of free slots')
+    parser.add_argument('--n_free', type=int, default=10000, help='Number of free slots (paper: 10,000 for 1-hop)')
     parser.add_argument('--mode', type=str, default='joint', choices=['joint', 'separate_activation', 'separate_value'])
     parser.add_argument('--lambda_recon', type=float, default=1.0)
     parser.add_argument('--lambda_sparse', type=float, default=1e-3)
     parser.add_argument('--lambda_align', type=float, default=1.0)
-    parser.add_argument('--lambda_indep', type=float, default=1e-2, help='Weight for independence loss within free slots')
+    parser.add_argument('--lambda_indep', type=float, default=0.0,
+                       help='Weight for free-slot independence loss. Not part of the paper objective '
+                            '(used only as a diagnostic there); >0 builds an n_free x n_free covariance matrix')
     parser.add_argument('--lambda_ortho', type=float, default=1e-2, help='Weight for orthogonality loss between relation and free slots')
     parser.add_argument('--lambda_value', type=float, default=0.5)
     parser.add_argument('--resume', type=str, default='', help='Resume from checkpoint')
@@ -263,7 +264,9 @@ def main():
     model = LargeSupervisedSAE(d_model=d_model, n_free=args.n_free, n_relation=6)
     model.to(device)
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
+    # Paper Appendix C.5: weight decay disabled so L2 regularization does not
+    # interfere with the explicit sparsity penalty
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.0)
 
     start_epoch = 0
 

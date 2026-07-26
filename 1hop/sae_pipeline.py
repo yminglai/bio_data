@@ -14,19 +14,20 @@ from datetime import datetime
 import time
 
 class SAEPipeline:
-    def __init__(self, base_dir="/home/mlyang721/bio_data", cuda_device=1):
+    def __init__(self, base_dir=".", cuda_device=0):
         self.base_dir = Path(base_dir)
         self.cuda_device = cuda_device
 
         # Configuration
-        self.lm_model = self.base_dir / "models/base_sft/checkpoint-step-10000"
+        self.lm_model = self.base_dir / "models/base_sft/final"
         self.output_base = self.base_dir / "models/sae_per_layer"
         self.results_base = self.base_dir / "results/sae_per_layer"
 
-        # Training parameters
+        # Training parameters (paper Appendix C: K=10,000 for 1-hop,
+        # Stage 1 = 100 epochs, Stage 2 = 500 epochs)
         self.n_free = 10000
-        self.epochs_stage1 = 20  # Reconstruction converges quickly
-        self.epochs_stage2 = 400  # Massive training for full convergence
+        self.epochs_stage1 = 100
+        self.epochs_stage2 = 500
         self.lambda_ortho = "1e-2"
 
         # Layers to process
@@ -57,6 +58,25 @@ class SAEPipeline:
 
         print("-" * 50)
         return True
+
+    def collect_activations_layer(self, layer):
+        """Collect activations for a specific layer (skips if already present)."""
+        activation_file = self.base_dir / f"data/activations/train_activations_layer{layer}.pkl"
+        if activation_file.exists():
+            print(f"✓ Activations already collected: {activation_file}")
+            return True
+
+        cmd = [
+            "python", "scripts/03_collect_activations.py",
+            "--model_path", str(self.lm_model),
+            "--layer", str(layer),
+            "--output", str(activation_file),
+        ]
+
+        env = os.environ.copy()
+        env["CUDA_VISIBLE_DEVICES"] = str(self.cuda_device)
+
+        return self.run_command(cmd, f"Collecting activations for layer {layer}", env=env)
 
     def train_sae_layer(self, layer):
         """Train SAE for a specific layer."""
@@ -212,8 +232,9 @@ class SAEPipeline:
             print(f"Processing layer {layer}...")
             start_time = time.time()
 
-            # Train SAE
-            train_success = self.train_sae_layer(layer)
+            # Collect activations (if needed), then train SAE
+            collect_success = self.collect_activations_layer(layer)
+            train_success = self.train_sae_layer(layer) if collect_success else False
 
             # Evaluate SAE (only if training succeeded)
             eval_success = False
@@ -256,9 +277,9 @@ class SAEPipeline:
 
 def main():
     parser = argparse.ArgumentParser(description="SAE Training and Evaluation Pipeline")
-    parser.add_argument("--base_dir", type=str, default="/home/mlyang721/bio_data",
-                       help="Base directory for the project")
-    parser.add_argument("--cuda_device", type=int, default=1,
+    parser.add_argument("--base_dir", type=str, default=".",
+                       help="Base directory for the project (the 1hop/ directory)")
+    parser.add_argument("--cuda_device", type=int, default=0,
                        help="CUDA device to use")
     parser.add_argument("--start_layer", type=int, default=None,
                        help="Start layer (inclusive)")

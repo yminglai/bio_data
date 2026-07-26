@@ -7,15 +7,20 @@
   ```
 
 ## 1-hop (bio QA) pipeline
-1) Generate data
+
+All 1-hop scripts use paths relative to `1hop/`, so `cd 1hop` first
+(or just run `bash 1hop/scripts/run_all_onehop.sh`, which does this for you).
+
+1) Generate data (QA pairs + train/test knowledge graphs)
    ```bash
+   cd 1hop
    python scripts/01_generate_dataset.py
    ```
 2) Fine-tune base model
    ```bash
    python scripts/02_sft_base_model.py
    ```
-3) Collect activations
+3) Collect activations (layer 6 by default, matching the paper)
    ```bash
    python scripts/03_collect_activations.py
    ```
@@ -33,11 +38,11 @@
 1) Generate two-hop QA in new format
    ```bash
    # from repo root
-   python 2hop/_gen_data/generate_two_hop.py --path 2hop/_dataset/_org/train.jsonl
-   python 2hop/_gen_data/generate_two_hop.py --path 2hop/_dataset/_org/val.jsonl
+   python 2hop/_gen_data/generate_two_hop.py --path 2hop/_dataset/_org/train_qa_data.json
+   python 2hop/_gen_data/generate_two_hop.py --path 2hop/_dataset/_org/val_qa_data.json
    # outputs to 2hop/_dataset/_gen/{train,val}_two_hop_qa_data.jsonl
    ```
-   To downsample to 4k/4k:
+   Downsample to 4k/4k (required: the runners read the *_4k.jsonl files):
    ```bash
    python 2hop/split_dataset.py
    # uses _gen files as input, writes *_4k.jsonl
@@ -60,5 +65,5 @@
 - models/, 2hop/_trained_model_*/, 2hop/sae_*, 2hop/activations/, 2hop/grokking_activations/, 2hop/swap_results/, generated datasets in 2hop/_dataset/_gen/. Keep generation scripts and README tracked.
 
 ## Visualization
-- Main figure: `main.png` (in repo root).
+- Main figure: `plots/main.png`.
 - Plotting helper scripts are gitignored; regenerate plots locally if needed.

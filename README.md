@@ -61,26 +61,29 @@ Requires Python 3.10+ and PyTorch 2.0+ (GPU recommended for training).
 
 ## 🚀 Quick Start
 
+No pretrained checkpoints are distributed — every artifact (datasets, SFT model, SAEs, results) is regenerated from scratch by the scripts below.
+
 ### 1-Hop (Bio QA)
 
 ```bash
-python 1hop/scripts/01_generate_dataset.py      # Generate synthetic bio QA data
-python 1hop/scripts/02_sft_base_model.py        # Fine-tune the base LLM
-python 1hop/scripts/03_collect_activations.py   # Collect layer activations
-python 1hop/scripts/04_train_sae.py             # Train the concept-aligned SAE
-python 1hop/scripts/05_evaluate_sae.py          # Evaluate binding
-python 1hop/scripts/06_swap_evaluate.py         # Swap-controllability evaluation
+cd 1hop                                    # scripts use paths relative to 1hop/
+python scripts/01_generate_dataset.py      # Generate synthetic bio QA data + KGs
+python scripts/02_sft_base_model.py        # Fine-tune the base LLM
+python scripts/03_collect_activations.py   # Collect layer-6 activations
+python scripts/04_train_sae.py             # Train the concept-aligned SAE
+python scripts/05_evaluate_sae.py          # Evaluate binding
+python scripts/06_swap_evaluate.py         # Swap-controllability evaluation
 # Or run the whole thing:
-bash 1hop/scripts/run_all_onehop.sh
+bash scripts/run_all_onehop.sh
 ```
 
 ### 2-Hop (Compositional Reasoning)
 
 ```bash
-# Generate two-hop QA
-python 2hop/_gen_data/generate_two_hop.py --path 2hop/_dataset/_org/train.jsonl
-python 2hop/_gen_data/generate_two_hop.py --path 2hop/_dataset/_org/val.jsonl
-python 2hop/split_dataset.py                     # (optional) downsample
+# From the repo root:
+python 2hop/_gen_data/generate_two_hop.py --path 2hop/_dataset/_org/train_qa_data.json
+python 2hop/_gen_data/generate_two_hop.py --path 2hop/_dataset/_org/val_qa_data.json
+python 2hop/split_dataset.py                     # 4k/4k split (the runners read the *_4k files)
 bash 2hop/run_train_two_hop.sh                   # Train the 2-hop model
 bash 2hop/run_full_pipeline.sh                   # Activations → SAE → eval → swap → grokking
 bash 2hop/run_swap_layer6.sh                     # Swap interventions at layer 6

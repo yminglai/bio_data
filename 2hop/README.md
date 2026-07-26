@@ -89,7 +89,7 @@ The model learns from relation sentences with standard next-token prediction. Al
 
 **Run training:**
 ```bash
-bash run_train_paragraph.sh
+bash run_train_two_hop.sh   # set MODE="paragraph" inside the script
 ```
 
 ## Data Format
@@ -115,9 +115,9 @@ Input JSONL files (`train_two_hop_qa_data.jsonl`, `val_two_hop_qa_data.jsonl`) c
 
 - Generate / convert data
 ```bash
-python 2hop/_gen_data/generate_two_hop.py --path 2hop/_dataset/_org/train.jsonl
-python 2hop/_gen_data/generate_two_hop.py --path 2hop/_dataset/_org/val.jsonl
-python 2hop/split_dataset.py   # optional 4k downsample
+python 2hop/_gen_data/generate_two_hop.py --path 2hop/_dataset/_org/train_qa_data.json
+python 2hop/_gen_data/generate_two_hop.py --path 2hop/_dataset/_org/val_qa_data.json
+python 2hop/split_dataset.py   # 4k downsample (required: the runners read the *_4k.jsonl files)
 ```
 
 - Train 2-hop LM (mixed)
@@ -139,12 +139,11 @@ Other helper shell scripts are ignored by git to keep the repo clean.
 
 ## Model Architecture
 
-- Base: GPT-2 architecture
-- Modified with:
-  - 6 transformer layers (reduced from 12 for faster training)
-  - 8 attention heads
-  - 512 hidden dimensions
-  - Custom vocabulary with entity tokens
+- Base: GPT-2 architecture (standard 124M configuration)
+  - 12 transformer layers
+  - 12 attention heads
+  - 768 hidden dimensions
+  - Custom vocabulary with entity tokens (see `_base_model/`)
 
 ## Output
 
@@ -158,10 +157,8 @@ Training produces:
    - `training_log.csv` - Step-by-step training metrics
    - Columns: step, epoch, split, loss, acc_1hop, acc_2hop, lr
 
-3. **Plots** (auto-generated):
-   - `plots/loss_curve.png` - Training/validation loss over steps
-   - `plots/val_accuracy_curve.png` - 1-hop and 2-hop accuracy
-   - `plots/combined_curves.png` - Combined loss and accuracy
+3. **Plots**: `training_log.csv` is a plain CSV — plot loss/accuracy curves
+   with any tool you like.
 
 ## Evaluation Metrics
 
@@ -184,16 +181,6 @@ This allows you to:
 - Attach SAE models that map relations to specific feature slots
 - Analyze learned representations
 
-## Visualization
-
-After training, generate plots:
-
-```bash
-python plot_curves.py \
-    --log_file _trained_model/training_log.csv \
-    --output_dir _trained_model/plots
-```
-
 ## Notes
 
 - Entity tokens must be single tokens in the tokenizer (already configured in `_base_model/`)
@@ -213,7 +200,7 @@ bash run_train_two_hop.sh
 
 2. **Paragraph-Only Training:**
 ```bash
-bash run_train_paragraph.sh
+bash run_train_two_hop.sh   # set MODE="paragraph" inside the script
 # Model learns: Relation sentences -> Entity tokens
 ```
 

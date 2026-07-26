@@ -86,7 +86,9 @@ echo "=========================================="
 
 python 2hop/03_evaluate_sae_2hop.py \
   --sae_checkpoint "$OUTPUT_DIR/sae_best.pt" \
+  --lm_model_path "$MODEL_PATH" \
   --val_data "$VAL_DATA" \
+  --layer "$LAYER" \
   --output_dir "$OUTPUT_DIR/evaluation"
 
 echo "✓ Evaluation complete"

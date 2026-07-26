@@ -11,7 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TRAIN_DATA="${SCRIPT_DIR}/_dataset/_gen/train_two_hop_qa_data_4k.jsonl"
 VAL_DATA="${SCRIPT_DIR}/_dataset/_gen/val_two_hop_qa_data_4k.jsonl"
 TOKENIZER_PATH="${SCRIPT_DIR}/_base_model"
-OUTPUT_DIR="${SCRIPT_DIR}/_trained_model_4k_30pct_200ep"
+OUTPUT_DIR="${SCRIPT_DIR}/_trained_model_4k_mixed"
 
 # Training hyperparameters (based on reference code)
 BATCH_SIZE=128          # Increased from 16
@@ -26,8 +26,7 @@ LOG_EVERY=200           # Log every 200 steps
 MODE="mixed"            # Mixed mode: 100% paragraph + 30% QA
 QA_RATIO=0.3            # 30% of train examples also as QA (70% OOD)
 
-# Device - Use GPU 2 (H100 NVL, 95GB, free)
-export CUDA_VISIBLE_DEVICES=2
+# Device (set CUDA_VISIBLE_DEVICES yourself to pick a specific GPU)
 DEVICE="cuda"
 
 echo "========================================="
@@ -76,18 +75,6 @@ if [ $? -eq 0 ]; then
     echo "========================================="
     echo "Training completed successfully!"
     echo "========================================="
-    
-    # Generate plots
-    LOG_FILE="${OUTPUT_DIR}/training_log.csv"
-    if [ -f "${LOG_FILE}" ]; then
-        echo "Generating training curves..."
-        python "${SCRIPT_DIR}/plot_curves.py" \
-            --log_file "${LOG_FILE}" \
-            --output_dir "${OUTPUT_DIR}/plots"
-        
-        echo ""
-        echo "Plots saved to: ${OUTPUT_DIR}/plots"
-    fi
     
     echo ""
     echo "Model checkpoints saved to: ${OUTPUT_DIR}"

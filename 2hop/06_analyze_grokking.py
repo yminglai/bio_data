@@ -240,11 +240,14 @@ def main():
     
     # Load SAE
     print("Loading SAE...")
-    d_model = 768  # GPT-2 hidden size
-    sae = LargeSupervisedSAE(d_model=d_model, n_free=100000, n_relation=20).to(device)
     checkpoint = torch.load(args.sae_checkpoint, map_location=device, weights_only=False)
-    sae.load_state_dict(checkpoint['model_state_dict'])
-    print(f"✓ Loaded SAE with {sae.n_slots} total slots (100k free + 20 supervised)")
+    d_model = checkpoint.get('d_model', 768)
+    n_free = checkpoint.get('args', {}).get('n_free', 100000)
+    sae = LargeSupervisedSAE(d_model=d_model, n_free=n_free, n_relation=20).to(device)
+    # strict=False: the checkpoint also contains value-head weights (an
+    # auxiliary training component this analysis does not use).
+    sae.load_state_dict(checkpoint['model_state_dict'], strict=False)
+    print(f"✓ Loaded SAE with {sae.n_slots} total slots ({n_free} free + 20 supervised)")
     
     # Find all activation files
     activations_dir = Path(args.grokking_activations_dir)

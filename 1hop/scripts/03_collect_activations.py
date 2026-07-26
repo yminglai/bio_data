@@ -11,13 +11,16 @@ import argparse
 from tqdm import tqdm
 import pickle
 
-def collect_activations(model, tokenizer, qa_file, kg_file, layer_idx=-1, max_samples=None):
+def collect_activations(model, tokenizer, qa_file, layer_idx=6, max_samples=None):
     """
     Collect activations from the model at the specified layer.
-    Uses PURE QA format (no biography context) - knowledge retrieval mode.
-    
+    Uses PURE QA format (no biography context) - knowledge retrieval mode:
+    the biographies are only used during SFT (step 2) so facts live in the
+    weights; here the model must retrieve them from parametric memory.
+
     Args:
-        layer_idx: Which transformer layer to extract from (-1 = last layer)
+        layer_idx: Which hidden_states index to extract (6 = the mid-layer
+                   used in the paper; -1 = last layer)
     """
     device = next(model.parameters()).device
     
@@ -67,9 +70,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_path', type=str, default='models/base_sft/final')
     parser.add_argument('--train_qa', type=str, default='data/generated/qa_train.jsonl')
-    parser.add_argument('--train_kg', type=str, default='data/generated/train_kg.json')
     parser.add_argument('--output', type=str, default='data/activations/train_activations.pkl')
-    parser.add_argument('--layer', type=int, default=-1, help='Layer to extract (-1 = last)')
+    parser.add_argument('--layer', type=int, default=6, help='hidden_states index to extract (paper uses 6)')
     parser.add_argument('--max_samples', type=int, default=None)
     args = parser.parse_args()
     
@@ -88,7 +90,7 @@ def main():
     # Collect activations
     print(f"Collecting activations from layer {args.layer}")
     activations = collect_activations(
-        model, tokenizer, args.train_qa, args.train_kg,
+        model, tokenizer, args.train_qa,
         layer_idx=args.layer,
         max_samples=args.max_samples
     )

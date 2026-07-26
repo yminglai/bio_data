@@ -58,10 +58,11 @@ RELATIONS = [
 
 def load_sae(sae_path, device):
     """Load trained SAE from checkpoint"""
-    d_model = 768
-    sae = LargeSupervisedSAE(d_model=d_model, n_free=100000, n_relation=20).to(device)
     checkpoint = torch.load(sae_path, map_location=device, weights_only=False)
-    sae.load_state_dict(checkpoint['model_state_dict'])
+    d_model = checkpoint.get('d_model', 768)
+    n_free = checkpoint.get('n_free', 100000)
+    sae = LargeSupervisedSAE(d_model=d_model, n_free=n_free, n_relation=20).to(device)
+    sae.load_state_dict(checkpoint['model_state_dict'], strict=False)
     sae.eval()
     return sae
 

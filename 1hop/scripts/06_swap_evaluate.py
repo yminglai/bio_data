@@ -257,11 +257,11 @@ def swap_controllability_only(sae, lm_model, tokenizer, qa_file, kg_file, layer_
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--sae_checkpoint', type=str, required=True)
+    parser.add_argument('--sae_checkpoint', type=str, default='models/sae_large/sae_final.pt')
     parser.add_argument('--lm_model', type=str, default='models/base_sft/final')
-    parser.add_argument('--qa_file', type=str, default='data/generated/qa_test_id.jsonl')
+    parser.add_argument('--qa_file', type=str, default='data/generated/qa_test_ood.jsonl')
     parser.add_argument('--kg_file', type=str, default='data/generated/test_kg.json')
-    parser.add_argument('--layer', type=int, default=0)
+    parser.add_argument('--layer', type=int, default=6, help='hidden_states index (must match 03/04)')
     parser.add_argument('--alphas', type=str, default='0.1,0.5,1,2,5,10,20,50,100,200,500,1000')
     parser.add_argument('--num_samples', type=int, default=200)
     parser.add_argument('--max_new_tokens', type=int, default=100)

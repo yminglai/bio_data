@@ -27,13 +27,14 @@ def save_jsonl(data, path):
             f.write(json.dumps(item) + '\n')
 
 def main():
-    # Paths
-    original_train = Path('2hop/_dataset/_gen/train_two_hop_qa_data.jsonl')
-    original_val = Path('2hop/_dataset/_gen/val_two_hop_qa_data.jsonl')
-    
+    # Paths (relative to this script so it works from any cwd)
+    gen_dir = Path(__file__).resolve().parent / '_dataset' / '_gen'
+    original_train = gen_dir / 'train_two_hop_qa_data.jsonl'
+    original_val = gen_dir / 'val_two_hop_qa_data.jsonl'
+
     # Output paths
-    new_train = Path('2hop/_dataset/_gen/train_two_hop_qa_data_4k.jsonl')
-    new_val = Path('2hop/_dataset/_gen/val_two_hop_qa_data_4k.jsonl')
+    new_train = gen_dir / 'train_two_hop_qa_data_4k.jsonl'
+    new_val = gen_dir / 'val_two_hop_qa_data_4k.jsonl'
     
     print("Loading original data...")
     train_data = load_jsonl(original_train)

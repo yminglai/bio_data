@@ -673,19 +673,19 @@ def evaluate_reconstruction_mse(sae, activation_file):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--sae_checkpoint', type=str, default='models/sae_6slot/sae_final.pt')
+    parser.add_argument('--sae_checkpoint', type=str, default='models/sae_large/sae_final.pt')
     parser.add_argument('--lm_model', type=str, default='models/base_sft/final')
-    parser.add_argument('--activation_file', type=str, default='data/activations/train_activations_layer0.pkl',
+    parser.add_argument('--activation_file', type=str, default='data/activations/train_activations.pkl',
                        help='Activation file for reconstruction MSE evaluation')
     parser.add_argument('--train_qa', type=str, default='data/generated/qa_train.jsonl',
                        help='Training QA for baseline')
     parser.add_argument('--train_kg', type=str, default='data/generated/train_kg.json')
-    parser.add_argument('--test_qa_id', type=str, default='data/generated/qa_test_id.jsonl',
-                       help='Test QA ID for confusion matrix')
+    parser.add_argument('--test_qa_id', type=str, default='data/generated/qa_test_ood.jsonl',
+                       help='QA file for the confusion matrix (held-out templates)')
     parser.add_argument('--test_qa_ood', type=str, default='data/generated/qa_test_ood.jsonl')
     parser.add_argument('--test_kg', type=str, default='data/generated/test_kg.json')
     parser.add_argument('--output_dir', type=str, default='results/sae_eval')
-    parser.add_argument('--layer', type=int, default=0)
+    parser.add_argument('--layer', type=int, default=6, help='hidden_states index (must match 03/04)')
     args = parser.parse_args()
     
     output_dir = Path(args.output_dir)

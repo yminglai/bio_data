@@ -1,16 +1,42 @@
-# Ignore model checkpoints and outputs (now under 1hop/)
+# -----------------------------------------------------------------
+# Everything ignored here is a generated artifact, reproducible by
+# running the pipelines (see README.md / RUN.md). Code, templates,
+# and raw data stay tracked; checkpoints/activations/results do not.
+# -----------------------------------------------------------------
+
+# --- 1-hop generated artifacts ---
 1hop/models/
-!1hop/models/base_sft/README.md
+1hop/results/
+1hop/logs/
+1hop/figures/
+1hop/plots/
+1hop/data/generated/
+1hop/data/activations/
+1hop/data/preview/
+1hop/data/output.csv
+1hop/data/bio.txt
+1hop/data/qa.txt
 
-notebooks/*
+# --- 2-hop generated artifacts ---
+2hop/_dataset/_gen/
+2hop/_trained_model_*/
+2hop/activations/
+2hop/grokking_activations/
+2hop/grokking_analysis*/
+2hop/sae_*/
+2hop/swap_results/
+2hop/epoch_evolution_analysis/
+2hop/binding_evolution_plots/
+2hop/plots/
+2hop/*.pt
+2hop/*.pkl
 
-# Ignore scripts not starting with 01, 02, 03
-1hop/scripts/*
-!1hop/scripts/01*
-!1hop/scripts/02*
-!1hop/scripts/03*
+# --- top-level generated artifacts ---
+models/
+results/
 
-# 1hop scripts misc / analysis helpers
+# --- local-only helper scripts kept out of the release ---
+1hop/plot.py
 1hop/scripts/README_OOD_GENERATION.md
 1hop/scripts/analyze_ablation_results.py
 1hop/scripts/compare_supervised_vs_traditional.py
@@ -19,179 +45,23 @@ notebooks/*
 1hop/scripts/generate_ood_questions_api.py
 1hop/scripts/generate_swap_plot.py
 1hop/scripts/plot.py
-1hop/scripts/temp.py
-1hop/scripts/sanity_check_traditional_sae.py
-
-2hop/*.py
-!2hop/01*.py
-!2hop/02*.py
-!2hop/03*.py
-
-2hop/*.sh
-!2hop/01*.sh
-!2hop/02*.sh
-!2hop/03*.sh
-
-# Keep data directories in 2hop
-!2hop/_*/
-!2hop/activations/
-!2hop/facts_database/
-!2hop/grok/
-!2hop/grokking_activations/
-!2hop/grokking_analysis/
-!2hop/sae_large/
-!2hop/sae_per_epoch/
-!2hop/swap_results/
-
-# Additional auxiliary scripts to ignore
 1hop/scripts/run_ablation.py
+1hop/scripts/sanity_check_traditional_sae.py
+1hop/scripts/temp.py
+2hop/run_grokking_analysis.sh
 2hop/run_swap_parallel.sh
 2hop/run_unsupervised_swap.sh
-
-# Two-hop checkpoints & artifacts
-2hop/_trained_model_*/
-2hop/sae_*/
-2hop/sae_per_epoch/
-2hop/activations/
-2hop/grokking_activations/
-2hop/grokking_analysis*/
-2hop/swap_results/
-2hop/epoch_evolution_analysis/
-2hop/binding_evolution_plots/
-2hop/sae_large*/
-2hop/sae_per_layer*/
-2hop/*.pt
-2hop/*.pkl
-2hop/plots/
-2hop/epoch_evolution_analysis/
-2hop/epoch_evolution_analysis/**
-
-1hop/plots/
-1hop/plot.py
-1hop/plots/*.py
-1hop/plots/**/*.py
-1hop/figures/
-1hop/logs/
-1hop/results/
-1hop/data/output.csv
-1hop/data/bio.txt
-1hop/data/qa.txt
-1hop/data/generated/
-1hop/data/activations/
-1hop/data/preview/
-1hop/data/qa_templates/
-1hop/data/templates/
-1hop/data/entities/
-1hop/data/README.md
-1hop/data/db_gen.py
-
-# Shell scripts (keep pipeline entrypoints tracked)
-!run_*.sh
-
-# 2hop: ignore auxiliary shell scripts, keep main entrypoints
-!2hop/run_full_pipeline.sh
-!2hop/run_train_two_hop.sh
-!2hop/run_swap_layer6.sh
-!2hop/run_grokking_analysis.sh
-
-# Ignore all generated dataset outputs (reproducible via db_gen.py)
-data/output.csv
-data/bio.txt
-data/qa.txt
-data/generated/
-data/activations/
-
-# Ignore preview and statistics
-data/preview/
-
-# Track raw data/templates in 1hop (adjust paths if needed)
-!1hop/data/README.md
-!1hop/data/db_gen.py
-!1hop/data/entities/
-!1hop/data/entities/birth_cities.txt
-!1hop/data/entities/companies.csv
-!1hop/data/entities/first_names.txt
-!1hop/data/entities/last_names.txt
-!1hop/data/entities/major_names.txt
-!1hop/data/entities/middle_names.txt
-!1hop/data/entities/universities.txt
-!1hop/data/qa_templates/
-!1hop/data/qa_templates/birth_city_questions.txt
-!1hop/data/qa_templates/birth_date_questions.txt
-!1hop/data/qa_templates/company_city_questions.txt
-!1hop/data/qa_templates/employer_questions.txt
-!1hop/data/qa_templates/major_questions.txt
-!1hop/data/qa_templates/university_questions.txt
-!1hop/data/templates/
-!1hop/data/templates/birth_city_templates.txt
-!1hop/data/templates/birth_date_templates.txt
-!1hop/data/templates/company_city_templates.txt
-!1hop/data/templates/employer_templates.txt
-!1hop/data/templates/major_templates.txt
-!1hop/data/templates/university_templates.txt
-
-# Two-hop generated datasets (regenerate via _gen_data scripts)
-2hop/_dataset/_gen/
-!2hop/_dataset/README.md
-!2hop/_gen_data/
-
-# 2hop local runners / helpers
-2hop/run_full_pipeline.sh
-2hop/run_grokking_analysis.sh
-2hop/run_swap_layer6.sh
-2hop/run_train_two_hop.sh
-2hop/split_dataset.py
-2hop/train_two_hop.py
 2hop/validate_traditional_sae.py
 
-## If you add new raw data or template files, add them here with !
-
-# # Ignore results
-# results/
-
-# Ignore Python cache and logs
+# --- environment / editor noise ---
 __pycache__/
 *.pyc
 *.pyo
 *.log
-
-# Ignore environment files
 .env
 .venv/
-
-# Ignore notebook checkpoints
 .ipynb_checkpoints/
-
-# Ignore notebooks (keep out of repo)
 notebooks/
 *.ipynb
-1hop/notebooks/
-sae_training_analysis.ipynb
-
-# Ignore shell history
+.DS_Store
 *.sh~
-
-# Allow scripts and code for reproducibility
-!scripts/
-!scripts/*
-
-# Allow README and documentation
-!README.md
-
-# Local Python env
-.venv/
-
-# Large model checkpoints
-models/
-
-# Very large analysis results
-results/1to1_feature_coactivation_analysis/
-results/traditional_sae_eval/
-results/traditional_sae_eval/**
-
-# Large analysis outputs (keep local only)
-results/1to1_feature_coactivation_analysis/
-results/traditional_sae_analysis/
-results/sae_comparison/
-results/sae_per_layer/
-results/ablation/

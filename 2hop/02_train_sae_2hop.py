@@ -246,6 +246,7 @@ def train_sae(model, train_loader, val_loader, args, device):
             torch.save({
                 'model_state_dict': model.state_dict(),
                 'd_model': model.d_model,
+                'n_free': model.n_free,
                 'n_relation': model.n_relation,
                 'args': vars(args),
                 'epoch': epoch,
@@ -258,6 +259,7 @@ def train_sae(model, train_loader, val_loader, args, device):
     torch.save({
         'model_state_dict': model.state_dict(),
         'd_model': model.d_model,
+        'n_free': model.n_free,
         'n_relation': model.n_relation,
         'args': vars(args),
         'epoch': epoch,

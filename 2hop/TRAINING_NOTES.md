@@ -24,10 +24,10 @@ lr = 1e-4
 weight_decay = 0.01
 warmup_ratio = 0.1
 
-# Model
-n_layer = 6
-n_head = 8
-n_embd = 512
+# Model (standard GPT-2 124M, hardcoded in train_two_hop.py)
+n_layer = 12
+n_head = 12
+n_embd = 768
 ```
 
 Learning rate schedule: linear warmup (10% steps) + linear decay.

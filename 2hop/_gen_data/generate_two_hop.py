@@ -1,5 +1,7 @@
 import json
 import argparse
+import os
+from pathlib import Path
 
 RELATION_TEMPLATES = {
     'friend_of': [
@@ -365,18 +367,21 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    # path
-    path = args.path
-    if "train" in path:
-        save_path = "../data/_dataset/_gen/train_two_hop_qa_data.jsonl"
-    elif "val" in path:
-        save_path = "../data/_dataset/_gen/val_two_hop_qa_data.jsonl"
+    # Output goes to 2hop/_dataset/_gen/ regardless of the caller's cwd.
+    out_dir = Path(__file__).resolve().parent.parent / "_dataset" / "_gen"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = os.path.basename(args.path)
+    if "train" in filename:
+        save_path = str(out_dir / "train_two_hop_qa_data.jsonl")
+    elif "val" in filename:
+        save_path = str(out_dir / "val_two_hop_qa_data.jsonl")
     else:
-        raise ValueError("Path must contain 'train' or 'val' to determine save path.")
+        raise ValueError("Input filename must contain 'train' or 'val' to determine save path.")
 
         
     # gen
-    dataset = load_train_qa_data(path)
+    dataset = load_train_qa_data(args.path)
     new_format_dataset = process_data(dataset)
     save_to_jsonl(new_format_dataset, save_path)
 
